@@ -11,7 +11,7 @@ Ask "what did I try last time I debugged webhooks?" and get an actual answer.
 ## Quick start
 
 ```bash
-pip install claude-session-index
+uv tool install git+https://github.com/cearley/claude-session-index
 ```
 
 Then install the Claude Code skill:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claude-session-index"
-version = "0.3.1"
+version = "0.4.0"
 description = "Index, search, and analyze your Claude Code sessions"
 readme = "README.md"
 license = "MIT"
@@ -37,9 +37,9 @@ session-analyze = "session_index.analyzer:main"
 session-topic-capture = "session_index.topic_capture:main"
 
 [project.urls]
-Homepage = "https://github.com/lee-fuhr/claude-session-index"
-Repository = "https://github.com/lee-fuhr/claude-session-index"
-Issues = "https://github.com/lee-fuhr/claude-session-index/issues"
+Homepage = "https://github.com/cearley/claude-session-index"
+Repository = "https://github.com/cearley/claude-session-index"
+Issues = "https://github.com/cearley/claude-session-index/issues"
 
 [tool.setuptools.packages.find]
 include = ["session_index*"]
