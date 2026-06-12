@@ -1,7 +1,7 @@
 ---
 name: session-index
 description: Use when the user asks about past sessions, what they tried before, previous conversations, or wants to search their Claude Code history, measure effort, or synthesize across sessions.
-version: 0.4.0
+version: 0.4.1
 author: Lee Fuhr
 contributors:
   - Craig Earley
