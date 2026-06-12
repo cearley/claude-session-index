@@ -65,8 +65,40 @@ def get_config() -> dict:
     return config
 
 
+def get_projects_dirs(overrides: list[str] = None) -> list[Path]:
+    """Get all configured projects directories as a list of Paths.
+
+    Priority: overrides → SESSION_INDEX_PROJECTS (colon-sep) →
+              config.json projects_dirs (list) → config.json projects_dir →
+              CLAUDE_CONFIG_DIR/projects → ~/.claude/projects
+    """
+    if overrides:
+        return [Path(p).expanduser() for p in overrides if p]
+
+    env_val = os.environ.get("SESSION_INDEX_PROJECTS")
+    if env_val:
+        return [Path(p).expanduser() for p in env_val.split(":") if p.strip()]
+
+    file_config = _load_config_file()
+    if "projects_dirs" in file_config:
+        val = file_config["projects_dirs"]
+        if isinstance(val, list):
+            return [Path(p).expanduser() for p in val if p]
+        elif isinstance(val, str):
+            return [Path(val).expanduser()]
+
+    if "projects_dir" in file_config:
+        return [Path(file_config["projects_dir"]).expanduser()]
+
+    claude_config = os.environ.get("CLAUDE_CONFIG_DIR")
+    if claude_config:
+        return [(Path(claude_config) / "projects").expanduser()]
+
+    return [Path.home() / ".claude" / "projects"]
+
+
 def get_projects_dir(override: str = None) -> Path:
-    """Get projects directory path."""
+    """Get projects directory path (single-dir backward-compat accessor)."""
     if override:
         return Path(override).expanduser()
     return Path(get_config()["projects_dir"]).expanduser()

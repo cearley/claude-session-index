@@ -53,6 +53,7 @@ sessions analytics                    # overall
 sessions analytics --client "Acme"    # per client
 sessions analytics --week             # this week
 sessions analytics --month            # this month
+sessions analytics --env personal     # one Claude environment
 ```
 
 **Filter** — find sessions by metadata:
@@ -61,7 +62,11 @@ sessions find --client "Acme"              # by client
 sessions find --tool Task --week           # by tool + date
 sessions find --project myapp              # by project
 sessions recent 20                         # last N sessions
+sessions recent --env personal             # one Claude environment
+sessions recent --env current              # active CLAUDE_CONFIG_DIR environment
 ```
+
+If the user mentions a specific Claude environment (personal, work, bedrock, etc.), add `--env <name>` to scope results. `--env current` resolves to `CLAUDE_CONFIG_DIR` at runtime.
 
 ### 3. For synthesis ("what worked?", "what have I tried?")
 

@@ -17,7 +17,7 @@ pip install claude-session-index
 Then install the Claude Code skill:
 
 ```bash
-npx skills add lee-fuhr/claude-session-index
+npx skills add cearley/claude-session-index
 ```
 
 Or copy it manually:
@@ -231,25 +231,54 @@ Works out of the box with sensible defaults. All paths are configurable.
 
 ### Priority order
 
-1. CLI flags (`--db-path`, `--projects-dir`)
+1. CLI flags (`--db-path`, `--projects-dir` (repeatable))
 2. Environment variables (`SESSION_INDEX_DB`, `SESSION_INDEX_PROJECTS`, `SESSION_INDEX_TOPICS`)
 3. Config file (`~/.session-index/config.json`)
-4. Defaults
+4. `CLAUDE_CONFIG_DIR` (if set, derives default projects and topics paths)
+5. Defaults
 
 ### Default paths
 
 | What | Default location |
 |------|-----------------|
 | Database | `~/.session-index/sessions.db` |
-| Sessions | `~/.claude/projects/` |
-| Topics | `~/.claude/session-topics/` |
+| Sessions | `$CLAUDE_CONFIG_DIR/projects/` or `~/.claude/projects/` |
+| Topics | `$CLAUDE_CONFIG_DIR/session-topics/` or `~/.claude/session-topics/` |
 | Config | `~/.session-index/config.json` |
+
+### Multiple Claude environments
+
+If you run multiple Claude Code environments (e.g., `~/.claude-personal`, `~/.claude-work`), index them all into one database:
+
+```bash
+# Via environment variable (colon-separated)
+export SESSION_INDEX_PROJECTS=~/.claude-personal/projects:~/.claude-work/projects
+
+# Or via config file
+{
+  "projects_dirs": [
+    "~/.claude-personal/projects",
+    "~/.claude-work/projects"
+  ]
+}
+```
+
+Each session is tagged with an `env:<name>` label. Filter by environment using `--env`:
+
+```bash
+sessions recent --env personal         # sessions from ~/.claude-personal
+sessions recent --env current          # sessions from $CLAUDE_CONFIG_DIR
+sessions find --week --env work
+sessions analytics --month --env work
+```
+
+`--env current` resolves to `CLAUDE_CONFIG_DIR` at runtime — useful in shell aliases.
 
 ### Optional config file
 
 ```json
 {
-  "projects_dir": "~/.claude/projects",
+  "projects_dirs": ["~/.claude-personal/projects", "~/.claude-work/projects"],
   "db_path": "~/.session-index/sessions.db",
   "topics_dir": "~/.claude/session-topics",
   "clients": ["Acme Corp", "Internal"],
@@ -258,6 +287,8 @@ Works out of the box with sensible defaults. All paths are configurable.
   }
 }
 ```
+
+Single-path `"projects_dir"` still works for backward compatibility.
 
 - **`clients`** — Optional. If provided, sessions are auto-tagged with matching client names. If empty, client detection is skipped.
 - **`project_names`** — Optional. Maps Claude's directory-based project names to friendly labels. If empty, auto-generates from directory names.

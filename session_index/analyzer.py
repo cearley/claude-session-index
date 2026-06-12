@@ -324,6 +324,7 @@ def format_context(result: dict) -> str:
 
 def analytics(client: str = None, project: str = None,
               week: bool = False, month: bool = False,
+              env: str = None,
               db_path: Path = None) -> dict:
     """Run analytics queries against sessions.db. Returns structured dict."""
     if db_path is None:
@@ -362,8 +363,15 @@ def analytics(client: str = None, project: str = None,
         project_clause = "AND (s.project_name LIKE ? OR s.project LIKE ?)"
         project_params = [f"%{project}%", f"%{project}%"]
 
-    base_where = f"WHERE 1=1 {period_clause} {client_clause} {project_clause}"
-    base_params = period_params + client_params + project_params
+    # Env filter
+    env_clause = ""
+    env_params = []
+    if env:
+        env_clause = "AND s.source_env LIKE ?"
+        env_params = [f"%{env}%"]
+
+    base_where = f"WHERE 1=1 {period_clause} {client_clause} {project_clause} {env_clause}"
+    base_params = period_params + client_params + project_params + env_params
 
     # 1. Time per client
     rows = conn.execute(f"""

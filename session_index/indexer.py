@@ -29,9 +29,16 @@ except ImportError:
 
 
 class SessionIndexer:
-    def __init__(self, db_path: Path = None, projects_dir: Path = None):
+    def __init__(self, db_path: Path = None, projects_dirs: list[Path] = None,
+                 projects_dir: Path = None):
         self.db_path = db_path or config.get_db_path()
-        self.projects_dir = projects_dir or config.get_projects_dir()
+        # Accept either projects_dirs (list) or legacy projects_dir (single Path)
+        if projects_dirs is not None:
+            self.projects_dirs = projects_dirs
+        elif projects_dir is not None:
+            self.projects_dirs = [projects_dir]
+        else:
+            self.projects_dirs = config.get_projects_dirs()
         self.project_name_map = config.get_project_names()
         self.clients = config.get_clients()
         self.conn = None
@@ -121,12 +128,18 @@ class SessionIndexer:
 
         self.conn.commit()
 
+        # Add source_env column if not present (safe migration for existing DBs)
+        existing_cols = [r[1] for r in self.conn.execute("PRAGMA table_info(sessions)")]
+        if "source_env" not in existing_cols:
+            self.conn.execute("ALTER TABLE sessions ADD COLUMN source_env TEXT")
+            self.conn.commit()
+
     def _file_hash(self, path: Path) -> str:
         """Quick hash based on size + mtime (not content — too slow for backfill)."""
         stat = path.stat()
         return hashlib.md5(f"{stat.st_size}:{stat.st_mtime}".encode()).hexdigest()
 
-    def _parse_session(self, session_path: Path) -> Optional[dict]:
+    def _parse_session(self, session_path: Path, source_env: str = None) -> Optional[dict]:
         """Parse a session JSONL file into indexable data."""
         session_id = session_path.stem
         project_dir = session_path.parent.name
@@ -292,6 +305,7 @@ class SessionIndexer:
             'tags': tags_str,
             'client': client,
             'file_path': str(session_path),
+            'source_env': source_env,
             'file_size': session_path.stat().st_size,
             'exchange_count': exchange_count,
             'start_time': start_time,
@@ -341,20 +355,29 @@ class SessionIndexer:
             print(f"Session file not found: {session_id or file_path}", file=sys.stderr)
             return False
 
-        data = self._parse_session(path)
+        source_env = None
+        for pd in self.projects_dirs:
+            if str(path).startswith(str(pd)):
+                source_env = str(pd)
+                break
+
+        data = self._parse_session(path, source_env=source_env)
         if not data:
             return False
 
         return self._upsert_session(data)
 
     def _find_session_file(self, session_id: str) -> Optional[Path]:
-        """Find session file by ID across all project directories."""
-        for project_dir in self.projects_dir.iterdir():
-            if not project_dir.is_dir():
+        """Find session file by ID across all configured projects directories."""
+        for projects_dir in self.projects_dirs:
+            if not projects_dir.exists():
                 continue
-            candidate = project_dir / f"{session_id}.jsonl"
-            if candidate.exists():
-                return candidate
+            for project_dir in projects_dir.iterdir():
+                if not project_dir.is_dir():
+                    continue
+                candidate = project_dir / f"{session_id}.jsonl"
+                if candidate.exists():
+                    return candidate
         return None
 
     def _upsert_session(self, data: dict) -> bool:
@@ -365,12 +388,14 @@ class SessionIndexer:
             self.conn.execute("""
                 INSERT INTO sessions (
                     session_id, project, project_name, title, title_display, tags,
-                    client, file_path, file_size, exchange_count, start_time, end_time,
-                    duration_minutes, model, has_compaction, indexed_at, last_modified, file_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    client, file_path, source_env, file_size, exchange_count,
+                    start_time, end_time, duration_minutes, model, has_compaction,
+                    indexed_at, last_modified, file_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) DO UPDATE SET
                     title=excluded.title, title_display=excluded.title_display,
                     tags=excluded.tags, client=excluded.client,
+                    source_env=excluded.source_env,
                     file_size=excluded.file_size, exchange_count=excluded.exchange_count,
                     end_time=excluded.end_time, duration_minutes=excluded.duration_minutes,
                     model=excluded.model, has_compaction=excluded.has_compaction,
@@ -379,10 +404,10 @@ class SessionIndexer:
             """, (
                 data['session_id'], data['project'], data['project_name'],
                 data['title'], data['title_display'], data['tags'],
-                data['client'], data['file_path'], data['file_size'],
-                data['exchange_count'], data['start_time'], data['end_time'],
-                data['duration_minutes'], data['model'], data['has_compaction'],
-                now, now, data['file_hash'],
+                data['client'], data['file_path'], data.get('source_env'),
+                data['file_size'], data['exchange_count'], data['start_time'],
+                data['end_time'], data['duration_minutes'], data['model'],
+                data['has_compaction'], now, now, data['file_hash'],
             ))
 
             # Upsert tools
@@ -434,32 +459,43 @@ class SessionIndexer:
     def backfill_all(self, progress_interval: int = 100) -> dict:
         """Index all existing sessions. Returns stats dict."""
         stats = {'total': 0, 'indexed': 0, 'skipped': 0, 'errors': 0}
-        session_files = []
+        # Collect (session_path, source_env) pairs across all configured dirs
+        session_files: list[tuple[Path, str]] = []
 
-        for project_dir in self.projects_dir.iterdir():
-            if not project_dir.is_dir():
+        for projects_dir in self.projects_dirs:
+            if not projects_dir.exists():
                 continue
-            for f in project_dir.glob("*.jsonl"):
-                session_files.append(f)
+            source_env = str(projects_dir)
+            for project_dir in projects_dir.iterdir():
+                if not project_dir.is_dir():
+                    continue
+                for f in project_dir.glob("*.jsonl"):
+                    session_files.append((f, source_env))
 
         stats['total'] = len(session_files)
         print(f"Found {stats['total']} session files to index")
 
-        for i, session_path in enumerate(session_files):
+        for i, (session_path, source_env) in enumerate(session_files):
             if (i + 1) % progress_interval == 0:
                 print(f"  Progress: {i + 1}/{stats['total']} ({stats['indexed']} indexed, {stats['errors']} errors)")
 
-            # Skip if already indexed with same hash
             session_id = session_path.stem
             current_hash = self._file_hash(session_path)
             existing = self.conn.execute(
-                "SELECT file_hash FROM sessions WHERE session_id=?", (session_id,)
+                "SELECT file_hash, source_env FROM sessions WHERE session_id=?", (session_id,)
             ).fetchone()
             if existing and existing['file_hash'] == current_hash:
+                # Backfill source_env for sessions that were indexed before this column existed
+                if existing['source_env'] is None:
+                    self.conn.execute(
+                        "UPDATE sessions SET source_env=? WHERE session_id=?",
+                        (source_env, session_id)
+                    )
+                    self.conn.commit()
                 stats['skipped'] += 1
                 continue
 
-            data = self._parse_session(session_path)
+            data = self._parse_session(session_path, source_env=source_env)
             if not data:
                 stats['errors'] += 1
                 continue
@@ -476,31 +512,35 @@ class SessionIndexer:
         """Index new or modified sessions since last run."""
         stats = {'checked': 0, 'indexed': 0, 'unchanged': 0, 'errors': 0}
 
-        for project_dir in self.projects_dir.iterdir():
-            if not project_dir.is_dir():
+        for projects_dir in self.projects_dirs:
+            if not projects_dir.exists():
                 continue
-            for session_path in project_dir.glob("*.jsonl"):
-                stats['checked'] += 1
-                session_id = session_path.stem
-                current_hash = self._file_hash(session_path)
-
-                existing = self.conn.execute(
-                    "SELECT file_hash FROM sessions WHERE session_id=?", (session_id,)
-                ).fetchone()
-
-                if existing and existing['file_hash'] == current_hash:
-                    stats['unchanged'] += 1
+            source_env = str(projects_dir)
+            for project_dir in projects_dir.iterdir():
+                if not project_dir.is_dir():
                     continue
+                for session_path in project_dir.glob("*.jsonl"):
+                    stats['checked'] += 1
+                    session_id = session_path.stem
+                    current_hash = self._file_hash(session_path)
 
-                data = self._parse_session(session_path)
-                if not data:
-                    stats['errors'] += 1
-                    continue
+                    existing = self.conn.execute(
+                        "SELECT file_hash FROM sessions WHERE session_id=?", (session_id,)
+                    ).fetchone()
 
-                if self._upsert_session(data):
-                    stats['indexed'] += 1
-                else:
-                    stats['errors'] += 1
+                    if existing and existing['file_hash'] == current_hash:
+                        stats['unchanged'] += 1
+                        continue
+
+                    data = self._parse_session(session_path, source_env=source_env)
+                    if not data:
+                        stats['errors'] += 1
+                        continue
+
+                    if self._upsert_session(data):
+                        stats['indexed'] += 1
+                    else:
+                        stats['errors'] += 1
 
         return stats
 

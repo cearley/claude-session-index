@@ -62,6 +62,9 @@ def main():
     )
     parser.add_argument('--db-path', type=str, default=None,
                         help='Path to sessions.db (overrides config)')
+    parser.add_argument('--projects-dir', action='append', dest='projects_dirs',
+                        metavar='PATH',
+                        help='Projects directory to index (repeatable; overrides config)')
 
     subparsers = parser.add_subparsers(dest='command')
 
@@ -84,6 +87,8 @@ def main():
     sp.add_argument('--project', help='Filter by project')
     sp.add_argument('--week', action='store_true', help='This week only')
     sp.add_argument('--month', action='store_true', help='This month only')
+    sp.add_argument('--env', metavar='ENV',
+                    help='Filter to a specific Claude environment (substring match, or "current")')
 
     # synthesize
     sp = subparsers.add_parser('synthesize', help='Cross-session synthesis')
@@ -93,6 +98,8 @@ def main():
     # recent
     sp = subparsers.add_parser('recent', help='Recent sessions')
     sp.add_argument('n', nargs='?', type=int, default=10)
+    sp.add_argument('--env', metavar='ENV',
+                    help='Filter to a specific Claude environment (substring match, or "current")')
 
     # find
     sp = subparsers.add_parser('find', help='Filter sessions')
@@ -106,6 +113,8 @@ def main():
     sp.add_argument('--project', help='Filter by project')
     sp.add_argument('--exclude-project', help='Exclude a project from results')
     sp.add_argument('--compacted', action='store_true', help='Only compacted sessions')
+    sp.add_argument('--env', metavar='ENV',
+                    help='Filter to a specific Claude environment (substring match, or "current")')
     sp.add_argument('-n', '--limit', type=int, default=20)
 
     # tools
@@ -149,9 +158,25 @@ def main():
         parser.print_help()
         sys.exit(0)
 
+    import os
+
     # Resolve paths
     db_path = Path(args.db_path) if args.db_path else config.get_db_path()
+    projects_dirs = config.get_projects_dirs(
+        overrides=getattr(args, 'projects_dirs', None)
+    )
     config.ensure_indexed(db_path)
+
+    # Resolve --env current → CLAUDE_CONFIG_DIR
+    def resolve_env(env_arg: str) -> str:
+        if env_arg == 'current':
+            claude_config = os.environ.get('CLAUDE_CONFIG_DIR')
+            if not claude_config:
+                print("Error: --env current requires CLAUDE_CONFIG_DIR to be set",
+                      file=sys.stderr)
+                sys.exit(1)
+            return str(Path(claude_config).expanduser())
+        return env_arg
 
     # --- Dispatch ---
 
@@ -192,9 +217,11 @@ def main():
         print(format_context(result))
 
     elif args.command == 'analytics':
+        env = resolve_env(args.env) if getattr(args, 'env', None) else None
         result = analytics(
             client=args.client, project=args.project,
             week=args.week, month=args.month,
+            env=env,
             db_path=db_path,
         )
         print(format_analytics(result))
@@ -207,7 +234,8 @@ def main():
         searcher = SessionSearch(db_path=db_path)
         searcher.connect()
         try:
-            results = searcher.recent(args.n)
+            env = resolve_env(args.env) if getattr(args, 'env', None) else None
+            results = searcher.recent(args.n, env=env)
             print(f"\n📋 Last {len(results)} sessions\n")
             for r in results:
                 print(format_result(r))
@@ -219,6 +247,7 @@ def main():
         searcher = SessionSearch(db_path=db_path)
         searcher.connect()
         try:
+            env = resolve_env(args.env) if getattr(args, 'env', None) else None
             results = searcher.find(
                 client=args.client, tag=args.tag, tool=args.tool,
                 agent=args.agent, date=args.date, week=args.week,
@@ -226,6 +255,7 @@ def main():
                 project=args.project,
                 exclude_project=getattr(args, 'exclude_project', None),
                 has_compaction=True if args.compacted else None,
+                env=env,
                 limit=args.limit,
             )
             if not results:
@@ -341,7 +371,7 @@ def main():
             except ImportError:
                 from indexer import SessionIndexer
 
-        indexer = SessionIndexer(db_path=db_path)
+        indexer = SessionIndexer(db_path=db_path, projects_dirs=projects_dirs)
         indexer.connect()
         try:
             if args.backfill:
