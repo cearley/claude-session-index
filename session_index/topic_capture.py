@@ -103,14 +103,16 @@ def save_state(state: dict):
 
 
 def find_session_file(session_id: str) -> Path | None:
-    """Find session JSONL file across project dirs."""
-    projects_dir = config.get_projects_dir()
-    for project_dir in projects_dir.iterdir():
-        if not project_dir.is_dir():
+    """Find session JSONL file across all configured project dirs."""
+    for projects_dir in config.get_projects_dirs():
+        if not projects_dir.exists():
             continue
-        candidate = project_dir / f"{session_id}.jsonl"
-        if candidate.exists():
-            return candidate
+        for project_dir in projects_dir.iterdir():
+            if not project_dir.is_dir():
+                continue
+            candidate = project_dir / f"{session_id}.jsonl"
+            if candidate.exists():
+                return candidate
     return None
 
 

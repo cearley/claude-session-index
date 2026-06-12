@@ -138,16 +138,15 @@ def get_project_names() -> dict[str, str]:
         return configured
 
     # Auto-generate from directory names
-    projects_dir = get_projects_dir()
     mapping = {}
-    if projects_dir.exists():
+    for projects_dir in get_projects_dirs():
+        if not projects_dir.exists():
+            continue
         for d in projects_dir.iterdir():
             if d.is_dir():
                 name = d.name
-                # Take the last meaningful segment
                 parts = [p for p in name.split("-") if p]
                 if parts:
-                    # Use last 1-2 segments as friendly name
                     friendly = " ".join(parts[-2:]) if len(parts) > 1 else parts[-1]
                     mapping[name] = friendly
 
