@@ -1,8 +1,10 @@
 ---
 name: session-index
-description: Search, analyze, and synthesize across all your Claude Code sessions. Ask "what did I try last time?" and get answers with resume links.
-version: 0.3.1
+description: Use when the user asks about past sessions, what they tried before, previous conversations, or wants to search their Claude Code history, measure effort, or synthesize across sessions.
+version: 0.4.0
 author: Lee Fuhr
+contributors:
+  - Craig Earley
 tags:
   - session-search
   - session-history
@@ -11,7 +13,7 @@ tags:
   - productivity
 requires:
   - python3
-  - pip
+  - uv
 ---
 
 # Session index skill
@@ -61,12 +63,13 @@ sessions analytics --env personal     # one Claude environment
 sessions find --client "Acme"              # by client
 sessions find --tool Task --week           # by tool + date
 sessions find --project myapp              # by project
+sessions find --week --env work            # by date + environment
 sessions recent 20                         # last N sessions
 sessions recent --env personal             # one Claude environment
 sessions recent --env current              # active CLAUDE_CONFIG_DIR environment
 ```
 
-If the user mentions a specific Claude environment (personal, work, bedrock, etc.), add `--env <name>` to scope results. `--env current` resolves to `CLAUDE_CONFIG_DIR` at runtime.
+If the user mentions a specific Claude environment (personal, work, bedrock, etc.), add `--env <name>` to scope results. `--env current` resolves to `CLAUDE_CONFIG_DIR` at runtime. All `find`, `recent`, and `analytics` commands accept `--env`.
 
 ### 3. For synthesis ("what worked?", "what have I tried?")
 
@@ -94,10 +97,24 @@ Don't dump raw CLI output. Summarize:
 ## Installation
 
 ```bash
-pip install claude-session-index
+uv tool install git+https://github.com/cearley/claude-session-index
 ```
 
 First run of any command auto-indexes all existing sessions.
+
+**Multiple Claude environments:** To index several Claude configs into one database, set `SESSION_INDEX_PROJECTS` to a colon-separated list of `projects/` directories, or add `projects_dirs` (list) to `~/.session-index/config.json`:
+
+```bash
+export SESSION_INDEX_PROJECTS=~/.claude-personal/projects:~/.claude-work/projects
+```
+
+The `--projects-dir` flag is also repeatable for one-off overrides:
+
+```bash
+sessions --projects-dir ~/.claude-personal/projects --projects-dir ~/.claude-work/projects index
+```
+
+Each session is tagged with an `env:<name>` label (derived from its source directory path).
 
 ## Data location
 
