@@ -12,6 +12,9 @@ pip install -e .
 
 # Optional: enable the `synthesize` command (requires Anthropic API key)
 pip install -e ".[synthesis]"
+
+# Enable the Conventional Commits check (one-time, per clone)
+git config core.hooksPath .githooks
 ```
 
 The package installs five entry points: `sessions` (unified CLI), `session-index`, `session-search`, `session-analyze`, `session-topic-capture`.
@@ -71,6 +74,12 @@ sessions find --week --env work
 ```
 
 Optional `clients` list and `project_names` dict (dir → friendly name) in the config file enable client attribution and custom display names.
+
+## Releases
+
+Versioning and CHANGELOG.md are automated by [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`, config in `release-please-config.json` / `.release-please-manifest.json`). It reads Conventional Commits on `main` and maintains a standing "release PR" with the version bump and changelog. Merging that PR cuts the git tag and GitHub Release.
+
+Commit messages must follow Conventional Commits (`feat:`, `fix:`, `chore:`, `feat!:` for breaking changes, etc.) — release-please ignores anything else. The `.githooks/commit-msg` hook checks this locally; enable it per the Setup section above.
 
 ## Claude Code Integration
 
