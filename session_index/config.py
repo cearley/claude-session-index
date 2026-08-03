@@ -9,6 +9,8 @@ Priority order:
 
 import json
 import os
+import socket
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +20,8 @@ DEFAULTS = {
     "topics_dir": str(Path.home() / ".claude" / "session-topics"),
     "clients": [],
     "project_names": {},
+    "machine_names": {},
+    "machine_name": None,
 }
 
 CONFIG_FILE = Path.home() / ".session-index" / "config.json"
@@ -156,6 +160,45 @@ def get_project_names() -> dict[str, str]:
                     mapping[name] = friendly
 
     return mapping
+
+
+def get_machine_name(projects_dir: Path) -> str:
+    """Resolve a friendly machine name for a projects directory.
+
+    Priority:
+    1. An explicit `machine_names` config entry keyed by the directory's path.
+    2. If the directory is a local default (`~/.claude/projects` or a sibling
+       `~/.claude-*/projects`), the configured `machine_name`, or the local
+       hostname if unset.
+    3. Otherwise (an unmapped, explicitly-added directory — typically a synced
+       peer machine's folder), a path-derived fallback label. A warning is
+       printed since this usually means a missing `machine_names` entry.
+    """
+    machine_names = get_config().get("machine_names", {})
+    key = str(projects_dir)
+    if key in machine_names:
+        return machine_names[key]
+
+    default_dir = Path.home() / ".claude" / "projects"
+    is_local_default = projects_dir == default_dir or (
+        projects_dir.name == "projects"
+        and projects_dir.parent.parent == Path.home()
+        and projects_dir.parent.name.startswith(".claude-")
+    )
+    if is_local_default:
+        configured = get_config().get("machine_name")
+        if configured:
+            return configured
+        return socket.gethostname().split(".")[0]
+
+    fallback = projects_dir.parent.name or projects_dir.name
+    print(
+        f"Warning: no machine_names entry for '{projects_dir}' — "
+        f"falling back to '{fallback}'. Add it to machine_names in "
+        f"~/.session-index/config.json to set an explicit label.",
+        file=sys.stderr,
+    )
+    return fallback
 
 
 def init_config():

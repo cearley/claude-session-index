@@ -89,6 +89,8 @@ def main():
     sp.add_argument('--month', action='store_true', help='This month only')
     sp.add_argument('--env', metavar='ENV',
                     help='Filter to a specific Claude environment (substring match, or "current")')
+    sp.add_argument('--machine', metavar='MACHINE',
+                    help='Filter to a specific machine (substring match, or "current")')
 
     # synthesize
     sp = subparsers.add_parser('synthesize', help='Cross-session synthesis')
@@ -100,6 +102,8 @@ def main():
     sp.add_argument('n', nargs='?', type=int, default=10)
     sp.add_argument('--env', metavar='ENV',
                     help='Filter to a specific Claude environment (substring match, or "current")')
+    sp.add_argument('--machine', metavar='MACHINE',
+                    help='Filter to a specific machine (substring match, or "current")')
 
     # find
     sp = subparsers.add_parser('find', help='Filter sessions')
@@ -115,6 +119,8 @@ def main():
     sp.add_argument('--compacted', action='store_true', help='Only compacted sessions')
     sp.add_argument('--env', metavar='ENV',
                     help='Filter to a specific Claude environment (substring match, or "current")')
+    sp.add_argument('--machine', metavar='MACHINE',
+                    help='Filter to a specific machine (substring match, or "current")')
     sp.add_argument('-n', '--limit', type=int, default=20)
 
     # tools
@@ -178,6 +184,12 @@ def main():
             return str(Path(claude_config).expanduser())
         return env_arg
 
+    # Resolve --machine current → this machine's own resolved name
+    def resolve_machine(machine_arg: str) -> str:
+        if machine_arg == 'current':
+            return config.get_machine_name(Path.home() / '.claude' / 'projects')
+        return machine_arg
+
     # --- Dispatch ---
 
     if args.command == 'search':
@@ -218,10 +230,11 @@ def main():
 
     elif args.command == 'analytics':
         env = resolve_env(args.env) if getattr(args, 'env', None) else None
+        machine = resolve_machine(args.machine) if getattr(args, 'machine', None) else None
         result = analytics(
             client=args.client, project=args.project,
             week=args.week, month=args.month,
-            env=env,
+            env=env, machine=machine,
             db_path=db_path,
         )
         print(format_analytics(result))
@@ -235,7 +248,8 @@ def main():
         searcher.connect()
         try:
             env = resolve_env(args.env) if getattr(args, 'env', None) else None
-            results = searcher.recent(args.n, env=env)
+            machine = resolve_machine(args.machine) if getattr(args, 'machine', None) else None
+            results = searcher.recent(args.n, env=env, machine=machine)
             print(f"\n📋 Last {len(results)} sessions\n")
             for r in results:
                 print(format_result(r))
@@ -248,6 +262,7 @@ def main():
         searcher.connect()
         try:
             env = resolve_env(args.env) if getattr(args, 'env', None) else None
+            machine = resolve_machine(args.machine) if getattr(args, 'machine', None) else None
             results = searcher.find(
                 client=args.client, tag=args.tag, tool=args.tool,
                 agent=args.agent, date=args.date, week=args.week,
@@ -255,7 +270,7 @@ def main():
                 project=args.project,
                 exclude_project=getattr(args, 'exclude_project', None),
                 has_compaction=True if args.compacted else None,
-                env=env,
+                env=env, machine=machine,
                 limit=args.limit,
             )
             if not results:

@@ -73,10 +73,14 @@ class SessionSearch:
     def connect(self):
         self.conn = sqlite3.connect(str(self.db_path))
         self.conn.row_factory = sqlite3.Row
-        # Apply source_env migration if needed (safe on existing DBs)
+        # Apply source_env/machine migrations if needed (safe on existing DBs)
         existing_cols = [r[1] for r in self.conn.execute("PRAGMA table_info(sessions)")]
         if "source_env" not in existing_cols:
             self.conn.execute("ALTER TABLE sessions ADD COLUMN source_env TEXT")
+            self.conn.commit()
+            existing_cols.append("source_env")
+        if "machine" not in existing_cols:
+            self.conn.execute("ALTER TABLE sessions ADD COLUMN machine TEXT")
             self.conn.commit()
 
     def close(self):
@@ -108,7 +112,7 @@ class SessionSearch:
              agent: str = None, date: str = None, week: bool = False,
              days: int = None, project: str = None,
              exclude_project: str = None, has_compaction: bool = None,
-             env: str = None, limit: int = 20) -> list[dict]:
+             env: str = None, machine: str = None, limit: int = 20) -> list[dict]:
         """Filter sessions by various criteria."""
         conditions = []
         params = []
@@ -159,13 +163,17 @@ class SessionSearch:
             conditions.append("s.source_env LIKE ?")
             params.append(f"%{env}%")
 
+        if machine:
+            conditions.append("s.machine LIKE ?")
+            params.append(f"%{machine}%")
+
         where = " AND ".join(conditions) if conditions else "1=1"
         params.append(limit)
 
         rows = self.conn.execute(f"""
             SELECT s.session_id, s.project_name, s.title, s.title_display,
                    s.client, s.tags, s.exchange_count, s.start_time,
-                   s.duration_minutes, s.has_compaction, s.source_env
+                   s.duration_minutes, s.has_compaction, s.source_env, s.machine
             FROM sessions s
             WHERE {where}
             ORDER BY s.start_time DESC
@@ -189,9 +197,9 @@ class SessionSearch:
         """, (session_id,)).fetchall()
         return [dict(r) for r in rows]
 
-    def recent(self, n: int = 10, env: str = None) -> list[dict]:
+    def recent(self, n: int = 10, env: str = None, machine: str = None) -> list[dict]:
         """Get N most recent sessions."""
-        return self.find(limit=n, env=env)
+        return self.find(limit=n, env=env, machine=machine)
 
     def stats(self) -> dict:
         """Get overall statistics."""
@@ -280,6 +288,8 @@ def format_result(r: dict, show_topics: bool = True) -> str:
         meta.append(r['start_time'][:10])
     if r.get('source_env'):
         meta.append(_env_label(r['source_env']))
+    if r.get('machine'):
+        meta.append(f"machine:{r['machine']}")
     if r.get('project_name'):
         meta.append(r['project_name'])
     if r.get('client'):

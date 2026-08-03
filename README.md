@@ -280,6 +280,81 @@ sessions analytics --month --env work
 
 `--env current` resolves to `CLAUDE_CONFIG_DIR` at runtime — useful in shell aliases.
 
+### Multi-machine syncing
+
+To get one merged, queryable index across *physical machines* (not just local environments), sync each machine's raw session directories to the others using whatever sync tool you already use (Syncthing, Dropbox, iCloud Drive, rsync — this project doesn't manage the sync itself, same as it doesn't manage `~/.claude-*/projects`).
+
+**Example:** a MacBook Pro with three local environments (`~/.claude-bedrock`, `~/.claude-personal`, `~/.claude-work`) and a Mac Studio with two (`~/.claude-bedrock`, `~/.claude-work` — no `personal`). Each machine's `~/SessionSync/` holds *only inbound* copies of the other machine's environments — nothing of your own ever lands there:
+
+```
+On the Mac Studio:                          On the MacBook Pro:
+~/SessionSync/macbook-pro/                  ~/SessionSync/mac-studio/
+  .claude-bedrock/projects/  ← from MBP       .claude-bedrock/projects/  ← from Studio
+  .claude-personal/projects/ ← from MBP       .claude-work/projects/     ← from Studio
+  .claude-work/projects/     ← from MBP
+```
+
+With Syncthing, that's one Folder per (origin machine × environment) pair — 3 shared out from the MacBook Pro, 2 from the Mac Studio:
+
+- On the **origin** machine, the Folder's local path is the real, live environment directory (e.g. `~/.claude-bedrock/projects`), type **Send Only**.
+- On the **peer** machine, the same shared Folder gets its own local path — `~/SessionSync/macbook-pro/.claude-bedrock/projects` — type **Receive Only**.
+
+Send Only / Receive Only matters, not just as a default: it guarantees a peer's mirrored copy can never write back into your live `~/.claude-*/projects`, which is Claude Code's actual working directory. Keep the leading dot on the mirrored environment folder names (`.claude-bedrock`, not `claude-bedrock`) so the `env:<name>` label renders identically whether a session came from the local copy or a synced peer copy.
+
+On each machine, add the **peer** machines' synced folders — not your own — to `projects_dirs`, and map each to a friendly name in `machine_names`. Multiple directories can (and often will) map to the same machine, since one physical machine can have several environments:
+
+MacBook Pro's `~/.session-index/config.json`:
+
+```json
+{
+  "projects_dirs": [
+    "~/.claude-bedrock/projects",
+    "~/.claude-personal/projects",
+    "~/.claude-work/projects",
+    "~/SessionSync/mac-studio/.claude-bedrock/projects",
+    "~/SessionSync/mac-studio/.claude-work/projects"
+  ],
+  "machine_names": {
+    "~/SessionSync/mac-studio/.claude-bedrock/projects": "mac-studio",
+    "~/SessionSync/mac-studio/.claude-work/projects": "mac-studio"
+  },
+  "machine_name": "macbook-pro"
+}
+```
+
+Mac Studio's `~/.session-index/config.json`:
+
+```json
+{
+  "projects_dirs": [
+    "~/.claude-bedrock/projects",
+    "~/.claude-work/projects",
+    "~/SessionSync/macbook-pro/.claude-bedrock/projects",
+    "~/SessionSync/macbook-pro/.claude-personal/projects",
+    "~/SessionSync/macbook-pro/.claude-work/projects"
+  ],
+  "machine_names": {
+    "~/SessionSync/macbook-pro/.claude-bedrock/projects": "macbook-pro",
+    "~/SessionSync/macbook-pro/.claude-personal/projects": "macbook-pro",
+    "~/SessionSync/macbook-pro/.claude-work/projects": "macbook-pro"
+  },
+  "machine_name": "mac-studio"
+}
+```
+
+> **Don't add your own machine's synced mirror of itself.** Your local sessions are already covered by your local `~/.claude-*/projects` directories directly; adding both paths for the same origin causes the `machine` label assigned to those sessions to flap between runs, depending on directory-scan order. (This shouldn't come up with the Send Only / Receive Only setup above, since nothing of your own ever lands in your own `~/SessionSync/` — but it's an easy mistake if you set sync up differently.)
+
+Run `sessions index --backfill` on each machine after adding a new peer directory so its sessions get picked up (and their `machine` label backfilled if you're upgrading an existing database). Each session is tagged with a `machine:<name>` label alongside `env:<name>`, and filterable the same way:
+
+```bash
+sessions recent --machine mac-studio
+sessions recent --machine current      # sessions from this machine
+sessions find --week --machine mac-studio
+sessions analytics --month --machine mac-studio
+```
+
+An unmapped `projects_dirs` entry falls back to a name derived from its path (with a warning printed during indexing) rather than being silently mislabeled as the local machine — add it to `machine_names` to fix.
+
 ### Optional config file
 
 ```json
@@ -290,7 +365,11 @@ sessions analytics --month --env work
   "clients": ["Acme Corp", "Internal"],
   "project_names": {
     "-Users-me-projects-myapp": "My App"
-  }
+  },
+  "machine_names": {
+    "~/SessionSync/imac-work/projects": "imac-work"
+  },
+  "machine_name": "macbook-personal"
 }
 ```
 
@@ -298,6 +377,8 @@ Single-path `"projects_dir"` still works for backward compatibility.
 
 - **`clients`** — Optional. If provided, sessions are auto-tagged with matching client names. If empty, client detection is skipped.
 - **`project_names`** — Optional. Maps Claude's directory-based project names to friendly labels. If empty, auto-generates from directory names.
+- **`machine_names`** — Optional. Maps a `projects_dir` path to a friendly machine label, for directories synced in from other machines. Unmapped local default directories fall back to `machine_name` or the local hostname; unmapped non-default directories fall back to a path-derived label with a warning.
+- **`machine_name`** — Optional. Overrides this machine's own label (used for its local default directories). Falls back to the local hostname if unset.
 
 ---
 

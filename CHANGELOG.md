@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — Multi-machine session tagging
+
+Sessions synced in from other physical machines (e.g. via Syncthing/Dropbox into a shared folder each machine also indexes) are now distinguishable and filterable, the same way `env:<name>` already distinguishes local Claude environments.
+
+- **`machine_names`** / **`machine_name`** config keys — map a `projects_dir` to a friendly machine label, or override this machine's own label. Unmapped local default directories fall back to the local hostname; unmapped non-default directories fall back to a path-derived label with a warning, rather than a silent mislabel.
+- **`machine` column** on the sessions table, migrated and backfilled automatically for existing databases.
+- **`--machine <substring>`** filter on `recent`, `find`, and `analytics`; `--machine current` resolves to this machine's own name.
+- **`machine:<name>` label** shown in session results alongside `env:<name>`.
+- README documents the recommended synced-folder convention and the self-sync-duplication gotcha.
+
 ## v0.5.0 — Multi-environment discovery, no configuration required
 
 Multi-environment support used to require manually exporting `SESSION_INDEX_PROJECTS` in your shell profile. That's no longer necessary.

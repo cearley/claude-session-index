@@ -134,12 +134,19 @@ class SessionIndexer:
             self.conn.execute("ALTER TABLE sessions ADD COLUMN source_env TEXT")
             self.conn.commit()
 
+        # Add machine column if not present (safe migration for existing DBs)
+        existing_cols = [r[1] for r in self.conn.execute("PRAGMA table_info(sessions)")]
+        if "machine" not in existing_cols:
+            self.conn.execute("ALTER TABLE sessions ADD COLUMN machine TEXT")
+            self.conn.commit()
+
     def _file_hash(self, path: Path) -> str:
         """Quick hash based on size + mtime (not content — too slow for backfill)."""
         stat = path.stat()
         return hashlib.md5(f"{stat.st_size}:{stat.st_mtime}".encode()).hexdigest()
 
-    def _parse_session(self, session_path: Path, source_env: str = None) -> Optional[dict]:
+    def _parse_session(self, session_path: Path, source_env: str = None,
+                       machine: str = None) -> Optional[dict]:
         """Parse a session JSONL file into indexable data."""
         session_id = session_path.stem
         project_dir = session_path.parent.name
@@ -306,6 +313,7 @@ class SessionIndexer:
             'client': client,
             'file_path': str(session_path),
             'source_env': source_env,
+            'machine': machine,
             'file_size': session_path.stat().st_size,
             'exchange_count': exchange_count,
             'start_time': start_time,
@@ -356,12 +364,14 @@ class SessionIndexer:
             return False
 
         source_env = None
+        machine = None
         for pd in self.projects_dirs:
             if str(path).startswith(str(pd)):
                 source_env = str(pd)
+                machine = config.get_machine_name(pd)
                 break
 
-        data = self._parse_session(path, source_env=source_env)
+        data = self._parse_session(path, source_env=source_env, machine=machine)
         if not data:
             return False
 
@@ -388,14 +398,14 @@ class SessionIndexer:
             self.conn.execute("""
                 INSERT INTO sessions (
                     session_id, project, project_name, title, title_display, tags,
-                    client, file_path, source_env, file_size, exchange_count,
+                    client, file_path, source_env, machine, file_size, exchange_count,
                     start_time, end_time, duration_minutes, model, has_compaction,
                     indexed_at, last_modified, file_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) DO UPDATE SET
                     title=excluded.title, title_display=excluded.title_display,
                     tags=excluded.tags, client=excluded.client,
-                    source_env=excluded.source_env,
+                    source_env=excluded.source_env, machine=excluded.machine,
                     file_size=excluded.file_size, exchange_count=excluded.exchange_count,
                     end_time=excluded.end_time, duration_minutes=excluded.duration_minutes,
                     model=excluded.model, has_compaction=excluded.has_compaction,
@@ -405,6 +415,7 @@ class SessionIndexer:
                 data['session_id'], data['project'], data['project_name'],
                 data['title'], data['title_display'], data['tags'],
                 data['client'], data['file_path'], data.get('source_env'),
+                data.get('machine'),
                 data['file_size'], data['exchange_count'], data['start_time'],
                 data['end_time'], data['duration_minutes'], data['model'],
                 data['has_compaction'], now, now, data['file_hash'],
@@ -459,43 +470,44 @@ class SessionIndexer:
     def backfill_all(self, progress_interval: int = 100) -> dict:
         """Index all existing sessions. Returns stats dict."""
         stats = {'total': 0, 'indexed': 0, 'skipped': 0, 'errors': 0}
-        # Collect (session_path, source_env) pairs across all configured dirs
-        session_files: list[tuple[Path, str]] = []
+        # Collect (session_path, source_env, machine) tuples across all configured dirs
+        session_files: list[tuple[Path, str, str]] = []
 
         for projects_dir in self.projects_dirs:
             if not projects_dir.exists():
                 continue
             source_env = str(projects_dir)
+            machine = config.get_machine_name(projects_dir)
             for project_dir in projects_dir.iterdir():
                 if not project_dir.is_dir():
                     continue
                 for f in project_dir.glob("*.jsonl"):
-                    session_files.append((f, source_env))
+                    session_files.append((f, source_env, machine))
 
         stats['total'] = len(session_files)
         print(f"Found {stats['total']} session files to index")
 
-        for i, (session_path, source_env) in enumerate(session_files):
+        for i, (session_path, source_env, machine) in enumerate(session_files):
             if (i + 1) % progress_interval == 0:
                 print(f"  Progress: {i + 1}/{stats['total']} ({stats['indexed']} indexed, {stats['errors']} errors)")
 
             session_id = session_path.stem
             current_hash = self._file_hash(session_path)
             existing = self.conn.execute(
-                "SELECT file_hash, source_env FROM sessions WHERE session_id=?", (session_id,)
+                "SELECT file_hash, source_env, machine FROM sessions WHERE session_id=?", (session_id,)
             ).fetchone()
             if existing and existing['file_hash'] == current_hash:
-                # Backfill source_env for sessions that were indexed before this column existed
-                if existing['source_env'] is None:
+                # Backfill source_env/machine for sessions indexed before these columns existed
+                if existing['source_env'] is None or existing['machine'] is None:
                     self.conn.execute(
-                        "UPDATE sessions SET source_env=? WHERE session_id=?",
-                        (source_env, session_id)
+                        "UPDATE sessions SET source_env=?, machine=? WHERE session_id=?",
+                        (source_env, machine, session_id)
                     )
                     self.conn.commit()
                 stats['skipped'] += 1
                 continue
 
-            data = self._parse_session(session_path, source_env=source_env)
+            data = self._parse_session(session_path, source_env=source_env, machine=machine)
             if not data:
                 stats['errors'] += 1
                 continue
@@ -516,6 +528,7 @@ class SessionIndexer:
             if not projects_dir.exists():
                 continue
             source_env = str(projects_dir)
+            machine = config.get_machine_name(projects_dir)
             for project_dir in projects_dir.iterdir():
                 if not project_dir.is_dir():
                     continue
@@ -532,7 +545,7 @@ class SessionIndexer:
                         stats['unchanged'] += 1
                         continue
 
-                    data = self._parse_session(session_path, source_env=source_env)
+                    data = self._parse_session(session_path, source_env=source_env, machine=machine)
                     if not data:
                         stats['errors'] += 1
                         continue
