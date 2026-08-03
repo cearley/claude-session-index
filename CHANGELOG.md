@@ -5,6 +5,23 @@
 Multi-environment support used to require manually exporting `SESSION_INDEX_PROJECTS` in your shell profile. That's no longer necessary.
 
 - **Automatic sibling-environment discovery** — with nothing configured, the tool now globs `~/.claude-*/projects` alongside the default `~/.claude/projects` and indexes them all. `SESSION_INDEX_PROJECTS`, `config.json`, and `CLAUDE_CONFIG_DIR` still work exactly as before and take precedence when set.
+- **README clarifies why this fork exists** — front-and-center explanation of the multi-environment support this fork adds, why `pip install` won't work (upstream owns the PyPI package name), and credit for both authors.
+- **Fixed version drift** — `pyproject.toml` had hardcoded `0.4.1` while `session_index.__init__.py` independently said `0.3.0`. `session_index.__version__` is now the single source of truth; `pyproject.toml` resolves it dynamically.
+
+## v0.4.1 — Fix multi-env hook crash
+
+- **Hotfix**: a multi-path `SESSION_INDEX_PROJECTS` (colon-separated) crashed all three hook handlers (`UserPromptSubmit`, `PreCompact`, `SessionEnd`) with `FileNotFoundError`. The singular `get_projects_dir()` accessor was treating the whole colon-joined string as one path; `find_session_file` and `get_project_names` now correctly iterate the plural `get_projects_dirs()`.
+
+## v0.4.0 — Multi-Claude-environment support
+
+Index sessions from multiple Claude home directories (e.g. personal, work, Bedrock) into one database, each tagged with the environment it came from.
+
+- **`SESSION_INDEX_PROJECTS`** env var accepts colon-separated paths; **`projects_dirs`** list key in `config.json` (`projects_dir` still works for a single path)
+- **`--projects-dir` flag is now repeatable** — `sessions --projects-dir /path/a --projects-dir /path/b`
+- **`source_env` column** on the sessions table, migrating existing databases automatically
+- **`--env <substring>`** filter on `recent`, `find`, and `analytics`; `--env current` resolves to `CLAUDE_CONFIG_DIR`
+- **`env:<name>` label** shown in session results whenever multiple environments are present
+- Skill and README updated with multi-environment usage guidance; install via `uv tool install` from this fork
 
 ## v0.3.1 — Stop titling everything "## Curation Data"
 
