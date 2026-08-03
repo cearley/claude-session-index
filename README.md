@@ -6,6 +6,8 @@ You've built things across hundreds of sessions. Solved problems, hit walls, fou
 
 Ask "what did I try last time I debugged webhooks?" and get an actual answer.
 
+**This is a fork** of [lee-fuhr/claude-session-index](https://github.com/lee-fuhr/claude-session-index) that adds **multi-environment support**: index sessions from multiple Claude Code home directories (e.g. work + personal) into one database, tagged and filterable with `--env`. See [Multiple Claude environments](#multiple-claude-environments). Everything else works the same as upstream. Install via `uv tool install git+...` below, not `pip install claude-session-index` — that PyPI name still belongs to upstream.
+
 ---
 
 ## Quick start
@@ -13,6 +15,8 @@ Ask "what did I try last time I debugged webhooks?" and get an actual answer.
 ```bash
 uv tool install git+https://github.com/cearley/claude-session-index
 ```
+
+(Not `pip install claude-session-index` — that name on PyPI is upstream's package, not this fork.)
 
 Then install the Claude Code skill:
 
@@ -334,4 +338,4 @@ The indexer parses JSONL files once, extracts metadata (timestamps, tools, agent
 
 ---
 
-Built by [Lee Fuhr](https://leefuhr.com)
+Originally built by [Lee Fuhr](https://leefuhr.com). This fork is maintained by [Craig Earley](https://github.com/cearley).
