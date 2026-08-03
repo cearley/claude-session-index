@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+# Enforces Conventional Commits on the first line of every commit message.
+# Enable with: git config core.hooksPath .githooks
+
+commit_msg_file="$1"
+first_line=$(head -n1 "$commit_msg_file")
+
+# Ignore merge commits and fixup/squash commits.
+case "$first_line" in
+  "Merge "*|"fixup! "*|"squash! "*) exit 0 ;;
+esac
+
+pattern='^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\([a-z0-9_-]+\))?!?: .+'
+
+if ! echo "$first_line" | grep -qE "$pattern"; then
+  echo "✗ Commit message does not follow Conventional Commits format." >&2
+  echo "  Expected: <type>(optional-scope)!: <description>" >&2
+  echo "  Types: feat, fix, chore, docs, style, refactor, perf, test, build, ci, revert" >&2
+  echo "  Got: $first_line" >&2
+  exit 1
+fi
