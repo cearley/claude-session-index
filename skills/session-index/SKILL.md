@@ -1,7 +1,7 @@
 ---
 name: session-index
 description: Use when the user asks about past sessions, what they tried before, previous conversations, or wants to search their Claude Code history, measure effort, or synthesize across sessions.
-version: 0.4.1
+version: 0.5.0
 author: Lee Fuhr
 contributors:
   - Craig Earley
@@ -102,7 +102,7 @@ uv tool install git+https://github.com/cearley/claude-session-index
 
 First run of any command auto-indexes all existing sessions.
 
-**Multiple Claude environments:** To index several Claude configs into one database, set `SESSION_INDEX_PROJECTS` to a colon-separated list of `projects/` directories, or add `projects_dirs` (list) to `~/.session-index/config.json`:
+**Multiple Claude environments:** discovered automatically — sibling `~/.claude-*/projects` directories are indexed alongside the default `~/.claude/projects` with no configuration needed. To index a different set, set `SESSION_INDEX_PROJECTS` to a colon-separated list of `projects/` directories, or add `projects_dirs` (list) to `~/.session-index/config.json`:
 
 ```bash
 export SESSION_INDEX_PROJECTS=~/.claude-personal/projects:~/.claude-work/projects

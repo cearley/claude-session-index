@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.0 — Multi-environment discovery, no configuration required
+
+Multi-environment support used to require manually exporting `SESSION_INDEX_PROJECTS` in your shell profile. That's no longer necessary.
+
+- **Automatic sibling-environment discovery** — with nothing configured, the tool now globs `~/.claude-*/projects` alongside the default `~/.claude/projects` and indexes them all. `SESSION_INDEX_PROJECTS`, `config.json`, and `CLAUDE_CONFIG_DIR` still work exactly as before and take precedence when set.
+
 ## v0.3.1 — Stop titling everything "## Curation Data"
 
 - **Smarter title auto-generation** — skips markdown headers, agent system prompts, and system caveats when picking a title from user messages. Tries up to 5 messages before giving up.

@@ -53,11 +53,11 @@ Config file: `~/.session-index/config.json`
 
 | Env var | Config key | Default |
 |---|---|---|
-| `SESSION_INDEX_PROJECTS` | `projects_dirs` (list) or `projects_dir` (string) | derived from `CLAUDE_CONFIG_DIR`, or `~/.claude/projects` |
+| `SESSION_INDEX_PROJECTS` | `projects_dirs` (list) or `projects_dir` (string) | derived from `CLAUDE_CONFIG_DIR`, or `~/.claude/projects` + discovered `~/.claude-*/projects` |
 | `SESSION_INDEX_DB` | `db_path` | `~/.session-index/sessions.db` |
 | `SESSION_INDEX_TOPICS` | `topics_dir` | `~/.claude/session-topics` |
 
-**Multi-environment support:** `SESSION_INDEX_PROJECTS` accepts colon-separated paths to index multiple Claude environments into one DB:
+**Multi-environment support:** with no explicit config, `get_projects_dirs()` globs sibling `~/.claude-*/projects` directories itself (no shell integration required — this used to depend on a shell plugin exporting `SESSION_INDEX_PROJECTS`, now it's self-sufficient). `SESSION_INDEX_PROJECTS` still accepts colon-separated paths as an override when you want a different set than what's on disk:
 ```
 SESSION_INDEX_PROJECTS=~/.claude-personal/projects:~/.claude-work/projects:~/.claude-bedrock/projects
 ```

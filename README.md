@@ -252,7 +252,9 @@ Works out of the box with sensible defaults. All paths are configurable.
 
 ### Multiple Claude environments
 
-If you run multiple Claude Code environments (e.g., `~/.claude-personal`, `~/.claude-work`), index them all into one database:
+If you run multiple Claude Code environments (e.g., `~/.claude-personal`, `~/.claude-work`), this tool finds them on its own — no shell integration or configuration needed. With nothing set, it globs `~/.claude-*/projects` alongside the default `~/.claude/projects` and indexes them all into one database.
+
+To index a different set than what's on disk, override explicitly:
 
 ```bash
 # Via environment variable (colon-separated)

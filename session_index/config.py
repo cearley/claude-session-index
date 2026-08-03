@@ -70,7 +70,8 @@ def get_projects_dirs(overrides: list[str] = None) -> list[Path]:
 
     Priority: overrides → SESSION_INDEX_PROJECTS (colon-sep) →
               config.json projects_dirs (list) → config.json projects_dir →
-              CLAUDE_CONFIG_DIR/projects → ~/.claude/projects
+              CLAUDE_CONFIG_DIR/projects →
+              ~/.claude/projects + discovered ~/.claude-*/projects
     """
     if overrides:
         return [Path(p).expanduser() for p in overrides if p]
@@ -94,7 +95,11 @@ def get_projects_dirs(overrides: list[str] = None) -> list[Path]:
     if claude_config:
         return [(Path(claude_config) / "projects").expanduser()]
 
-    return [Path.home() / ".claude" / "projects"]
+    # No explicit config: default env plus any sibling ~/.claude-<name>
+    # directories discovered on disk.
+    default_dir = Path.home() / ".claude" / "projects"
+    discovered = sorted(Path.home().glob(".claude-*/projects"))
+    return [default_dir] + discovered
 
 
 def get_projects_dir(override: str = None) -> Path:
